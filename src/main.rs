@@ -1,5 +1,7 @@
 mod lexer;
 
 fn main() {
-    println!("Hello, world!");
+    let tokens = lexer::tokenize("let x").unwrap();
+
+    println!("{:#?}", tokens);
 }

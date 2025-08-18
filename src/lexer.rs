@@ -64,7 +64,6 @@ pub struct Span {
 
 type Cursor<'a> = Peekable<CharIndices<'a>>;
 
-#[allow(dead_code)]
 pub fn tokenize(input: &str) -> Result<Vec<SpannedToken>, SpannedError> {
     let mut tokens = Vec::new();
     let mut cursor = input.char_indices().peekable();
@@ -76,7 +75,7 @@ pub fn tokenize(input: &str) -> Result<Vec<SpannedToken>, SpannedError> {
             '-' => tokens.push(SpannedToken::from_char(Token::Minus, pos, ch)),
             '*' => tokens.push(SpannedToken::from_char(Token::Asterix, pos, ch)),
             '/' => tokens.push(SpannedToken::from_char(Token::Slash, pos, ch)),
-            '<' => tokens.push(consume_compound_or_fallback(
+            '<' => tokens.push(compound(
                 &mut cursor,
                 pos,
                 ch,
@@ -84,7 +83,7 @@ pub fn tokenize(input: &str) -> Result<Vec<SpannedToken>, SpannedError> {
                 Token::LessEqual,
                 Token::Less,
             )),
-            '>' => tokens.push(consume_compound_or_fallback(
+            '>' => tokens.push(compound(
                 &mut cursor,
                 pos,
                 ch,
@@ -92,7 +91,7 @@ pub fn tokenize(input: &str) -> Result<Vec<SpannedToken>, SpannedError> {
                 Token::GreaterEqual,
                 Token::Greater,
             )),
-            '=' => tokens.push(consume_compound_or_fallback(
+            '=' => tokens.push(compound(
                 &mut cursor,
                 pos,
                 ch,
@@ -100,7 +99,7 @@ pub fn tokenize(input: &str) -> Result<Vec<SpannedToken>, SpannedError> {
                 Token::Equal,
                 Token::Assign,
             )),
-            '!' => tokens.push(consume_compound_or_fallback(
+            '!' => tokens.push(compound(
                 &mut cursor,
                 pos,
                 ch,
@@ -114,7 +113,7 @@ pub fn tokenize(input: &str) -> Result<Vec<SpannedToken>, SpannedError> {
             '}' => tokens.push(SpannedToken::from_char(Token::RightBrace, pos, ch)),
             ',' => tokens.push(SpannedToken::from_char(Token::Comma, pos, ch)),
             ';' => tokens.push(SpannedToken::from_char(Token::Semicolon, pos, ch)),
-            'a'..='z' => tokens.push(consume_word(&mut cursor, pos, ch)),
+            'a'..='z' => tokens.push(word(&mut cursor, pos, ch)),
             _ => {
                 return Err(SpannedError {
                     error: Error::UnexpectedChar(ch),
@@ -127,7 +126,9 @@ pub fn tokenize(input: &str) -> Result<Vec<SpannedToken>, SpannedError> {
     Ok(tokens)
 }
 
-fn consume_compound_or_fallback(
+/// If the next character in the cursor matches `next_ch`, returns the `compound` token
+/// spanning both `ch` and `next_ch`. Otherwise, returns the `fallback` token.
+fn compound(
     cursor: &mut Cursor<'_>,
     pos: usize,
     ch: char,
@@ -142,7 +143,7 @@ fn consume_compound_or_fallback(
     }
 }
 
-fn consume_word(cursor: &mut Cursor<'_>, pos: usize, ch: char) -> SpannedToken {
+fn word(cursor: &mut Cursor<'_>, pos: usize, ch: char) -> SpannedToken {
     let mut word = String::new();
     word.push(ch);
     word.extend(
