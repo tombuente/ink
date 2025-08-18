@@ -1,17 +1,21 @@
+use std::{iter::Peekable, str::CharIndices};
+
 use thiserror::Error;
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
-    // Arithmetic operators
+    // Arithmetic
     Plus,
     Minus,
     Asterix,
     Slash,
 
-    // Assignment and comparison operators
+    // Assignment and comparison
+    Assign,
     Less,
     Greater,
-    Assign,
+    LessEqual,
+    GreaterEqual,
     Equal,
     Bang,
     NotEqual,
@@ -58,6 +62,8 @@ pub struct Span {
     end: usize,
 }
 
+type Cursor<'a> = Peekable<CharIndices<'a>>;
+
 #[allow(dead_code)]
 pub fn tokenize(input: &str) -> Result<Vec<SpannedToken>, SpannedError> {
     let mut tokens = Vec::new();
@@ -66,123 +72,49 @@ pub fn tokenize(input: &str) -> Result<Vec<SpannedToken>, SpannedError> {
     while let Some((pos, ch)) = cursor.next() {
         match ch {
             _ if ch.is_whitespace() => continue,
-            '+' => tokens.push(SpannedToken {
-                token: Token::Plus,
-                span: Span::from_char(pos, ch),
-            }),
-            '-' => tokens.push(SpannedToken {
-                token: Token::Minus,
-                span: Span::from_char(pos, ch),
-            }),
-            '*' => tokens.push(SpannedToken {
-                token: Token::Asterix,
-                span: Span::from_char(pos, ch),
-            }),
-            '/' => tokens.push(SpannedToken {
-                token: Token::Slash,
-                span: Span::from_char(pos, ch),
-            }),
-            '<' => tokens.push(SpannedToken {
-                token: Token::Less,
-                span: Span::from_char(pos, ch),
-            }),
-            '>' => tokens.push(SpannedToken {
-                token: Token::Greater,
-                span: Span::from_char(pos, ch),
-            }),
-            '=' => {
-                if let Some((ch_pos, ch)) = cursor.next_if(|&(_, ch)| ch == '=') {
-                    tokens.push(SpannedToken {
-                        token: Token::Equal,
-                        span: Span::from_chars(pos, ch_pos, ch),
-                    });
-                } else {
-                    tokens.push(SpannedToken {
-                        token: Token::Assign,
-                        span: Span::from_char(pos, ch),
-                    })
-                }
-            }
-            '!' => {
-                if let Some((ch_pos, ch)) = cursor.next_if(|&(_, ch)| ch == '=') {
-                    tokens.push(SpannedToken {
-                        token: Token::NotEqual,
-                        span: Span::from_chars(pos, ch_pos, ch),
-                    });
-                } else {
-                    tokens.push(SpannedToken {
-                        token: Token::Bang,
-                        span: Span::from_char(pos, ch),
-                    })
-                }
-            }
-            '(' => tokens.push(SpannedToken {
-                token: Token::LeftParan,
-                span: Span::from_char(pos, ch),
-            }),
-            ')' => tokens.push(SpannedToken {
-                token: Token::RightParan,
-                span: Span::from_char(pos, ch),
-            }),
-            '{' => tokens.push(SpannedToken {
-                token: Token::LeftBrace,
-                span: Span::from_char(pos, ch),
-            }),
-            '}' => tokens.push(SpannedToken {
-                token: Token::RightBrace,
-                span: Span::from_char(pos, ch),
-            }),
-            ',' => tokens.push(SpannedToken {
-                token: Token::Comma,
-                span: Span::from_char(pos, ch),
-            }),
-            ';' => tokens.push(SpannedToken {
-                token: Token::Semicolon,
-                span: Span::from_char(pos, ch),
-            }),
-            'a'..='z' => {
-                let mut word = String::new();
-                word.push(ch);
-                word.extend(
-                    cursor
-                        .by_ref()
-                        .take_while(|(_, c)| c.is_alphanumeric())
-                        .map(|(_, c)| c),
-                );
-
-                let span = Span::from_str(pos, word.as_str());
-
-                match word.as_str() {
-                    "let" => tokens.push(SpannedToken {
-                        token: Token::Let,
-                        span,
-                    }),
-                    "return" => tokens.push(SpannedToken {
-                        token: Token::Return,
-                        span,
-                    }),
-                    "if" => tokens.push(SpannedToken {
-                        token: Token::If,
-                        span,
-                    }),
-                    "fn" => tokens.push(SpannedToken {
-                        token: Token::Fn,
-                        span,
-                    }),
-                    "true" => tokens.push(SpannedToken {
-                        token: Token::Bool(true),
-                        span,
-                    }),
-                    "false" => tokens.push(SpannedToken {
-                        token: Token::Bool(false),
-                        span,
-                    }),
-                    _ => tokens.push(SpannedToken {
-                        token: Token::Ident(word),
-                        span,
-                    }),
-                }
-            }
+            '+' => tokens.push(SpannedToken::from_char(Token::Plus, pos, ch)),
+            '-' => tokens.push(SpannedToken::from_char(Token::Minus, pos, ch)),
+            '*' => tokens.push(SpannedToken::from_char(Token::Asterix, pos, ch)),
+            '/' => tokens.push(SpannedToken::from_char(Token::Slash, pos, ch)),
+            '<' => tokens.push(consume_compound_or_fallback(
+                &mut cursor,
+                pos,
+                ch,
+                '=',
+                Token::LessEqual,
+                Token::Less,
+            )),
+            '>' => tokens.push(consume_compound_or_fallback(
+                &mut cursor,
+                pos,
+                ch,
+                '=',
+                Token::GreaterEqual,
+                Token::Greater,
+            )),
+            '=' => tokens.push(consume_compound_or_fallback(
+                &mut cursor,
+                pos,
+                ch,
+                '=',
+                Token::Equal,
+                Token::Assign,
+            )),
+            '!' => tokens.push(consume_compound_or_fallback(
+                &mut cursor,
+                pos,
+                ch,
+                '=',
+                Token::NotEqual,
+                Token::Bang,
+            )),
+            '(' => tokens.push(SpannedToken::from_char(Token::LeftParan, pos, ch)),
+            ')' => tokens.push(SpannedToken::from_char(Token::RightParan, pos, ch)),
+            '{' => tokens.push(SpannedToken::from_char(Token::LeftBrace, pos, ch)),
+            '}' => tokens.push(SpannedToken::from_char(Token::RightBrace, pos, ch)),
+            ',' => tokens.push(SpannedToken::from_char(Token::Comma, pos, ch)),
+            ';' => tokens.push(SpannedToken::from_char(Token::Semicolon, pos, ch)),
+            'a'..='z' => tokens.push(consume_word(&mut cursor, pos, ch)),
             _ => {
                 return Err(SpannedError {
                     error: Error::UnexpectedChar(ch),
@@ -195,25 +127,100 @@ pub fn tokenize(input: &str) -> Result<Vec<SpannedToken>, SpannedError> {
     Ok(tokens)
 }
 
+fn consume_compound_or_fallback(
+    cursor: &mut Cursor<'_>,
+    pos: usize,
+    ch: char,
+    next_ch: char,
+    compound: Token,
+    fallback: Token,
+) -> SpannedToken {
+    if let Some((ch_pos, ch)) = cursor.next_if(|&(_, ch)| ch == next_ch) {
+        SpannedToken::from_chars(compound, pos, ch_pos, ch)
+    } else {
+        SpannedToken::from_char(fallback, pos, ch)
+    }
+}
+
+fn consume_word(cursor: &mut Cursor<'_>, pos: usize, ch: char) -> SpannedToken {
+    let mut word = String::new();
+    word.push(ch);
+    word.extend(
+        cursor
+            .by_ref()
+            .take_while(|(_, ch)| ch.is_alphanumeric())
+            .map(|(_, ch)| ch),
+    );
+
+    let span = Span::from_str(pos, word.as_str());
+
+    match word.as_str() {
+        "let" => SpannedToken {
+            token: Token::Let,
+            span,
+        },
+        "return" => SpannedToken {
+            token: Token::Return,
+            span,
+        },
+        "if" => SpannedToken {
+            token: Token::If,
+            span,
+        },
+        "fn" => SpannedToken {
+            token: Token::Fn,
+            span,
+        },
+        "true" => SpannedToken {
+            token: Token::Bool(true),
+            span,
+        },
+        "false" => SpannedToken {
+            token: Token::Bool(false),
+            span,
+        },
+        _ => SpannedToken {
+            token: Token::Ident(word),
+            span,
+        },
+    }
+}
+
+impl SpannedToken {
+    fn from_char(token: Token, pos: usize, ch: char) -> Self {
+        Self {
+            token,
+            span: Span::from_char(pos, ch),
+        }
+    }
+
+    fn from_chars(token: Token, pos: usize, ch_pos: usize, ch: char) -> Self {
+        Self {
+            token,
+            span: Span::from_chars(pos, ch_pos, ch),
+        }
+    }
+}
+
 impl Span {
-    fn from_char(offset: usize, ch: char) -> Self {
+    fn from_char(pos: usize, ch: char) -> Self {
         Self {
-            start: offset,
-            end: offset + ch.len_utf8(),
+            start: pos,
+            end: pos + ch.len_utf8(),
         }
     }
 
-    fn from_chars(offset: usize, ch_offset: usize, ch: char) -> Self {
+    fn from_chars(pos: usize, ch_pos: usize, ch: char) -> Self {
         Self {
-            start: offset,
-            end: ch_offset + ch.len_utf8(),
+            start: pos,
+            end: ch_pos + ch.len_utf8(),
         }
     }
 
-    fn from_str(offset: usize, str: &str) -> Self {
+    fn from_str(pos: usize, str: &str) -> Self {
         Self {
-            start: offset,
-            end: offset + str.len(),
+            start: pos,
+            end: pos + str.len(),
         }
     }
 }
@@ -226,7 +233,7 @@ mod tests {
     fn test_tokenize_tokens() {
         let input = "
         + - * /
-        < > = == ! !=
+        < > <= >= = == ! !=
         ( ) { } , ;
         
         let
@@ -249,6 +256,8 @@ mod tests {
             Token::Slash,
             Token::Less,
             Token::Greater,
+            Token::LessEqual,
+            Token::GreaterEqual,
             Token::Assign,
             Token::Equal,
             Token::Bang,
