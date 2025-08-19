@@ -2,7 +2,7 @@ use std::{iter::Peekable, str::CharIndices};
 
 use thiserror::Error;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     // Arithmetic
     Plus,
@@ -37,7 +37,7 @@ pub enum Token {
     Ident(String),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct SpannedToken {
     pub token: Token,
     pub span: Span,
@@ -56,7 +56,7 @@ pub struct SpannedError {
     pub span: Span,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Span {
     start: usize,
     end: usize,
