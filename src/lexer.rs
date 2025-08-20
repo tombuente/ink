@@ -2,6 +2,8 @@ use std::{iter::Peekable, str::CharIndices};
 
 use thiserror::Error;
 
+use crate::ast::{Span, Spanned};
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     // Arithmetic
@@ -34,14 +36,14 @@ pub enum Token {
     If,
     Fn,
     Bool(bool),
-    Word(String),
+    Ident(String),
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct SpannedToken {
-    pub token: Token,
-    pub span: Span,
-}
+// #[derive(Debug, PartialEq, Clone)]
+// pub struct SpannedToken {
+//     pub token: Token,
+//     pub span: Span,
+// }
 
 #[derive(Debug, Error, PartialEq)]
 pub enum Error {
@@ -56,25 +58,19 @@ pub struct SpannedError {
     pub span: Span,
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct Span {
-    pub start: usize,
-    pub end: usize,
-}
-
 type Cursor<'a> = Peekable<CharIndices<'a>>;
 
-pub fn tokenize(input: &str) -> Result<Vec<SpannedToken>, SpannedError> {
+pub fn tokenize(input: &str) -> Result<Vec<Spanned<Token>>, SpannedError> {
     let mut tokens = Vec::new();
     let mut cursor = input.char_indices().peekable();
 
     while let Some((pos, ch)) = cursor.next() {
         match ch {
             _ if ch.is_whitespace() => continue,
-            '+' => tokens.push(SpannedToken::from_char(Token::Plus, pos, ch)),
-            '-' => tokens.push(SpannedToken::from_char(Token::Minus, pos, ch)),
-            '*' => tokens.push(SpannedToken::from_char(Token::Asterix, pos, ch)),
-            '/' => tokens.push(SpannedToken::from_char(Token::Slash, pos, ch)),
+            '+' => tokens.push(Spanned::from_char(Token::Plus, pos, ch)),
+            '-' => tokens.push(Spanned::from_char(Token::Minus, pos, ch)),
+            '*' => tokens.push(Spanned::from_char(Token::Asterix, pos, ch)),
+            '/' => tokens.push(Spanned::from_char(Token::Slash, pos, ch)),
             '<' => tokens.push(compound(
                 &mut cursor,
                 pos,
@@ -107,12 +103,12 @@ pub fn tokenize(input: &str) -> Result<Vec<SpannedToken>, SpannedError> {
                 Token::NotEqual,
                 Token::Bang,
             )),
-            '(' => tokens.push(SpannedToken::from_char(Token::LeftParan, pos, ch)),
-            ')' => tokens.push(SpannedToken::from_char(Token::RightParan, pos, ch)),
-            '{' => tokens.push(SpannedToken::from_char(Token::LeftBrace, pos, ch)),
-            '}' => tokens.push(SpannedToken::from_char(Token::RightBrace, pos, ch)),
-            ',' => tokens.push(SpannedToken::from_char(Token::Comma, pos, ch)),
-            ';' => tokens.push(SpannedToken::from_char(Token::Semicolon, pos, ch)),
+            '(' => tokens.push(Spanned::from_char(Token::LeftParan, pos, ch)),
+            ')' => tokens.push(Spanned::from_char(Token::RightParan, pos, ch)),
+            '{' => tokens.push(Spanned::from_char(Token::LeftBrace, pos, ch)),
+            '}' => tokens.push(Spanned::from_char(Token::RightBrace, pos, ch)),
+            ',' => tokens.push(Spanned::from_char(Token::Comma, pos, ch)),
+            ';' => tokens.push(Spanned::from_char(Token::Semicolon, pos, ch)),
             'a'..='z' => tokens.push(word(&mut cursor, pos, ch)),
             _ => {
                 return Err(SpannedError {
@@ -135,15 +131,15 @@ fn compound(
     next_ch: char,
     compound: Token,
     fallback: Token,
-) -> SpannedToken {
+) -> Spanned<Token> {
     if let Some((ch_pos, ch)) = cursor.next_if(|&(_, ch)| ch == next_ch) {
-        SpannedToken::from_chars(compound, pos, ch_pos, ch)
+        Spanned::from_chars(compound, pos, ch_pos, ch)
     } else {
-        SpannedToken::from_char(fallback, pos, ch)
+        Spanned::from_char(fallback, pos, ch)
     }
 }
 
-fn word(cursor: &mut Cursor<'_>, pos: usize, ch: char) -> SpannedToken {
+fn word(cursor: &mut Cursor<'_>, pos: usize, ch: char) -> Spanned<Token> {
     let mut word = String::new();
     word.push(ch);
     word.extend(
@@ -156,50 +152,13 @@ fn word(cursor: &mut Cursor<'_>, pos: usize, ch: char) -> SpannedToken {
     let span = Span::from_str(pos, word.as_str());
 
     match word.as_str() {
-        "let" => SpannedToken {
-            token: Token::Let,
-            span,
-        },
-        "return" => SpannedToken {
-            token: Token::Return,
-            span,
-        },
-        "if" => SpannedToken {
-            token: Token::If,
-            span,
-        },
-        "fn" => SpannedToken {
-            token: Token::Fn,
-            span,
-        },
-        "true" => SpannedToken {
-            token: Token::Bool(true),
-            span,
-        },
-        "false" => SpannedToken {
-            token: Token::Bool(false),
-            span,
-        },
-        _ => SpannedToken {
-            token: Token::Word(word),
-            span,
-        },
-    }
-}
-
-impl SpannedToken {
-    fn from_char(token: Token, pos: usize, ch: char) -> Self {
-        Self {
-            token,
-            span: Span::from_char(pos, ch),
-        }
-    }
-
-    fn from_chars(token: Token, pos: usize, ch_pos: usize, ch: char) -> Self {
-        Self {
-            token,
-            span: Span::from_chars(pos, ch_pos, ch),
-        }
+        "let" => Spanned::new(Token::Let, span),
+        "return" => Spanned::new(Token::Return, span),
+        "if" => Spanned::new(Token::If, span),
+        "fn" => Spanned::new(Token::Fn, span),
+        "true" => Spanned::new(Token::Bool(true), span),
+        "false" => Spanned::new(Token::Bool(false), span),
+        _ => Spanned::new(Token::Ident(word), span),
     }
 }
 
@@ -226,6 +185,22 @@ impl Span {
     }
 }
 
+impl Spanned<Token> {
+    pub fn from_char(token: Token, pos: usize, ch: char) -> Self {
+        Self {
+            value: token,
+            span: Span::from_char(pos, ch),
+        }
+    }
+
+    pub fn from_chars(token: Token, pos: usize, ch_pos: usize, ch: char) -> Self {
+        Self {
+            value: token,
+            span: Span::from_chars(pos, ch_pos, ch),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,7 +222,7 @@ mod tests {
         let tokens: Vec<_> = tokenize(input)
             .unwrap()
             .into_iter()
-            .map(|spanned_token| spanned_token.token)
+            .map(|spanned| spanned.value)
             .collect();
 
         let expected = vec![
@@ -275,7 +250,7 @@ mod tests {
             Token::Fn,
             Token::Bool(true),
             Token::Bool(false),
-            Token::Word("word".to_string()),
+            Token::Ident("word".to_string()),
         ];
 
         assert_eq!(tokens, expected);

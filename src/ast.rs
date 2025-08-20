@@ -1,6 +1,8 @@
+use std::fmt;
+
 use thiserror::Error;
 
-use crate::lexer::{Span, SpannedToken, Token};
+use crate::lexer::Token;
 
 #[derive(Debug, Default)]
 pub struct Program {
@@ -9,61 +11,50 @@ pub struct Program {
 
 #[derive(Debug)]
 pub enum Statement {
-    Let(Ident, Expression),
-    Expression(Expression),
+    Let(Spanned<String>, Spanned<Expression>),
+    Expression(Spanned<Expression>),
 }
 
 #[derive(Debug)]
 pub struct Ident {
     pub name: String,
-    pub location: usize,
+    pub span: Span,
 }
 
 #[derive(Debug)]
 pub enum Expression {
-    Int {
-        literal: i64,
-        location: usize,
-    },
-    Bool {
-        literal: bool,
-        location: usize,
-    },
-    String {
-        literal: String,
-        location: usize,
-    },
+    Int(i64),
+    Bool(bool),
+    String(String),
+    Var(Spanned<String>),
     Unary {
-        operator: PrefixOperator,
-        expression: Box<Expression>,
-        location: usize,
+        operator: Spanned<UnaryOperator>,
+        expression: Box<Spanned<Expression>>,
     },
     Binary {
-        operator: InfixOperator,
-        lhs: Box<Expression>,
-        rhs: Box<Expression>,
-        location: usize,
+        operator: Spanned<BinaryOperator>,
+        lhs: Box<Spanned<Expression>>,
+        rhs: Box<Spanned<Expression>>,
     },
     Assignment {
-        ident: Box<Expression>,
-        expression: Box<Expression>,
-        location: usize,
+        ident: Box<Spanned<Expression>>,
+        expression: Box<Spanned<Expression>>,
     },
     If {
-        condition: Box<Expression>,
+        condition: Box<Spanned<Expression>>,
         consequence: Box<Statement>,
         alternative: Box<Statement>,
     },
 }
 
 #[derive(Debug)]
-pub enum PrefixOperator {
+pub enum UnaryOperator {
     Not,
     Negation,
 }
 
 #[derive(Debug, PartialEq)]
-pub enum InfixOperator {
+pub enum BinaryOperator {
     Add,
     Sub,
     Mul,
@@ -80,68 +71,107 @@ pub enum InfixOperator {
 #[derive(Debug, Error)]
 pub enum PrefixOperatorError {
     #[error("cannot convert {0:?} to a prefix operator")]
-    InvalidToken(SpannedToken),
+    InvalidToken(Spanned<Token>),
 }
 
 #[derive(Debug, Error)]
 pub enum InfixOperatorError {
     #[error("cannot convert {0:?} to a infix operator")]
-    InvalidToken(SpannedToken),
+    InvalidToken(Spanned<Token>),
 }
 
-impl Expression {
-    pub fn unary(operator: PrefixOperator, expression: Expression, location: usize) -> Self {
-        Self::Unary {
-            operator,
-            expression: Box::new(expression),
-            location,
+#[derive(PartialEq, Clone)]
+pub struct Spanned<T> {
+    pub value: T,
+    pub span: Span,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Span {
+    pub start: usize,
+    pub end: usize,
+}
+
+impl Spanned<Expression> {
+    pub fn unary(operator: Spanned<UnaryOperator>, expression: Spanned<Expression>) -> Self {
+        let start = operator.span.start;
+        let end = expression.span.end;
+
+        Self {
+            value: Expression::Unary {
+                operator,
+                expression: Box::new(expression),
+            },
+            span: Span { start, end },
         }
     }
 
     pub fn binary(
-        operator: InfixOperator,
-        lhs: Expression,
-        rhs: Expression,
-        location: usize,
+        operator: Spanned<BinaryOperator>,
+        lhs: Spanned<Expression>,
+        rhs: Spanned<Expression>,
     ) -> Self {
-        Self::Binary {
-            operator,
-            lhs: Box::new(lhs),
-            rhs: Box::new(rhs),
-            location,
+        let start = lhs.span.start;
+        let end = rhs.span.end;
+
+        Self {
+            value: Expression::Binary {
+                operator,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            },
+            span: Span { start, end },
         }
     }
 }
 
-impl TryFrom<&SpannedToken> for PrefixOperator {
+impl TryFrom<&Spanned<Token>> for UnaryOperator {
     type Error = PrefixOperatorError;
 
-    fn try_from(token: &SpannedToken) -> Result<Self, Self::Error> {
-        match token.token {
-            Token::Bang => Ok(PrefixOperator::Not),
-            Token::Minus => Ok(PrefixOperator::Negation),
+    fn try_from(token: &Spanned<Token>) -> Result<Self, Self::Error> {
+        match token.value {
+            Token::Bang => Ok(UnaryOperator::Not),
+            Token::Minus => Ok(UnaryOperator::Negation),
             _ => Err(PrefixOperatorError::InvalidToken(token.clone())),
         }
     }
 }
 
-impl TryFrom<&SpannedToken> for InfixOperator {
+impl TryFrom<&Spanned<Token>> for BinaryOperator {
     type Error = InfixOperatorError;
 
-    fn try_from(token: &SpannedToken) -> Result<Self, Self::Error> {
-        match token.token {
-            Token::Plus => Ok(InfixOperator::Add),
-            Token::Minus => Ok(InfixOperator::Sub),
-            Token::Asterix => Ok(InfixOperator::Mul),
-            Token::Slash => Ok(InfixOperator::Div),
-            Token::Assign => Ok(InfixOperator::Assign),
-            Token::Less => Ok(InfixOperator::Less),
-            Token::Greater => Ok(InfixOperator::Greater),
-            Token::LessEqual => Ok(InfixOperator::LessEqual),
-            Token::GreaterEqual => Ok(InfixOperator::GreaterEqual),
-            Token::Equal => Ok(InfixOperator::Equal),
-            Token::NotEqual => Ok(InfixOperator::NotEqual),
+    fn try_from(token: &Spanned<Token>) -> Result<Self, Self::Error> {
+        match token.value {
+            Token::Plus => Ok(BinaryOperator::Add),
+            Token::Minus => Ok(BinaryOperator::Sub),
+            Token::Asterix => Ok(BinaryOperator::Mul),
+            Token::Slash => Ok(BinaryOperator::Div),
+            Token::Assign => Ok(BinaryOperator::Assign),
+            Token::Less => Ok(BinaryOperator::Less),
+            Token::Greater => Ok(BinaryOperator::Greater),
+            Token::LessEqual => Ok(BinaryOperator::LessEqual),
+            Token::GreaterEqual => Ok(BinaryOperator::GreaterEqual),
+            Token::Equal => Ok(BinaryOperator::Equal),
+            Token::NotEqual => Ok(BinaryOperator::NotEqual),
             _ => Err(InfixOperatorError::InvalidToken(token.clone())),
         }
+    }
+}
+
+impl<T> Spanned<T> {
+    pub fn new(value: T, span: Span) -> Self {
+        Self { value, span }
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for Spanned<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let type_name = std::any::type_name::<T>();
+        let name = type_name.rsplit("::").next().unwrap_or(type_name);
+
+        f.debug_struct(name)
+            .field("value", &self.value)
+            .field("span", &self.span)
+            .finish()
     }
 }
