@@ -34,7 +34,7 @@ pub enum Token {
     If,
     Fn,
     Bool(bool),
-    Ident(String),
+    Word(String),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -58,8 +58,8 @@ pub struct SpannedError {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Span {
-    start: usize,
-    end: usize,
+    pub start: usize,
+    pub end: usize,
 }
 
 type Cursor<'a> = Peekable<CharIndices<'a>>;
@@ -181,7 +181,7 @@ fn word(cursor: &mut Cursor<'_>, pos: usize, ch: char) -> SpannedToken {
             span,
         },
         _ => SpannedToken {
-            token: Token::Ident(word),
+            token: Token::Word(word),
             span,
         },
     }
@@ -275,7 +275,7 @@ mod tests {
             Token::Fn,
             Token::Bool(true),
             Token::Bool(false),
-            Token::Ident("word".to_string()),
+            Token::Word("word".to_string()),
         ];
 
         assert_eq!(tokens, expected);
