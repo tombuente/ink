@@ -24,7 +24,7 @@ pub struct Ident {
 #[derive(Debug)]
 pub enum Expression {
     Int(i64),
-    Bool(bool),
+    Bool(Spanned<bool>),
     String(String),
     Var(Spanned<String>),
     Unary {
@@ -80,13 +80,13 @@ pub enum InfixOperatorError {
     InvalidToken(Spanned<Token>),
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Copy)]
 pub struct Spanned<T> {
     pub value: T,
     pub span: Span,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
@@ -97,13 +97,13 @@ impl Spanned<Expression> {
         let start = operator.span.start;
         let end = expression.span.end;
 
-        Self {
-            value: Expression::Unary {
+        Self::new(
+            Expression::Unary {
                 operator,
                 expression: Box::new(expression),
             },
-            span: Span { start, end },
-        }
+            Span::new(start, end),
+        )
     }
 
     pub fn binary(
@@ -114,14 +114,14 @@ impl Spanned<Expression> {
         let start = lhs.span.start;
         let end = rhs.span.end;
 
-        Self {
-            value: Expression::Binary {
+        Self::new(
+            Expression::Binary {
                 operator,
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
             },
-            span: Span { start, end },
-        }
+            Span::new(start, end),
+        )
     }
 }
 
@@ -144,7 +144,7 @@ impl TryFrom<&Spanned<Token>> for BinaryOperator {
         match token.value {
             Token::Plus => Ok(BinaryOperator::Add),
             Token::Minus => Ok(BinaryOperator::Sub),
-            Token::Asterix => Ok(BinaryOperator::Mul),
+            Token::Asterisk => Ok(BinaryOperator::Mul),
             Token::Slash => Ok(BinaryOperator::Div),
             Token::Assign => Ok(BinaryOperator::Assign),
             Token::Less => Ok(BinaryOperator::Less),
@@ -168,10 +168,17 @@ impl<T: fmt::Debug> fmt::Debug for Spanned<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let type_name = std::any::type_name::<T>();
         let name = type_name.rsplit("::").next().unwrap_or(type_name);
+        // let full_name = format!("Spanned<{}>", name);
 
         f.debug_struct(name)
             .field("value", &self.value)
             .field("span", &self.span)
             .finish()
+    }
+}
+
+impl Span {
+    pub fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
     }
 }

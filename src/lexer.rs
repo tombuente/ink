@@ -9,7 +9,7 @@ pub enum Token {
     // Arithmetic
     Plus,
     Minus,
-    Asterix,
+    Asterisk,
     Slash,
 
     // Assignment and comparison
@@ -69,7 +69,7 @@ pub fn tokenize(input: &str) -> Result<Vec<Spanned<Token>>, SpannedError> {
             _ if ch.is_whitespace() => continue,
             '+' => tokens.push(Spanned::from_char(Token::Plus, pos, ch)),
             '-' => tokens.push(Spanned::from_char(Token::Minus, pos, ch)),
-            '*' => tokens.push(Spanned::from_char(Token::Asterix, pos, ch)),
+            '*' => tokens.push(Spanned::from_char(Token::Asterisk, pos, ch)),
             '/' => tokens.push(Spanned::from_char(Token::Slash, pos, ch)),
             '<' => tokens.push(compound(
                 &mut cursor,
@@ -228,7 +228,7 @@ mod tests {
         let expected = vec![
             Token::Plus,
             Token::Minus,
-            Token::Asterix,
+            Token::Asterisk,
             Token::Slash,
             Token::Less,
             Token::Greater,

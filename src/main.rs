@@ -5,7 +5,7 @@ mod lexer;
 mod parser;
 
 fn main() {
-    let tokens = lexer::tokenize("x").unwrap();
+    let tokens = lexer::tokenize("!x").unwrap();
 
     println!("{:#?}", tokens);
 

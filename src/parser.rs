@@ -3,7 +3,7 @@ use std::vec;
 use thiserror::Error;
 
 use crate::{
-    ast::{Expression, Program, Spanned, Statement, UnaryOperator},
+    ast::{BinaryOperator, Expression, Program, Spanned, Statement, UnaryOperator},
     lexer::Token,
 };
 
@@ -29,8 +29,9 @@ enum Precedence {
 pub enum ParseError {
     #[error("expected one of {0:?}, found {1:?}")]
     Expect(Vec<Token>, Option<Spanned<Token>>),
-    // #[error("generic parse error: {0}")]
-    // Generic(String),
+
+    #[error("expected token, found {0:?}")]
+    ExpectSome(Option<Spanned<Token>>),
 }
 
 #[allow(dead_code)]
@@ -83,58 +84,104 @@ impl Parser {
         &mut self,
         precedence: Precedence,
     ) -> Result<Spanned<Expression>, ParseError> {
-        let token = self.token.take();
-        self.advance();
+        let token = self.expect()?;
 
-        let lhs = match token {
-            Some(Spanned {
+        let mut lhs = match token {
+            Spanned {
                 value: Token::Ident(name),
                 span,
-            }) => Spanned::new(Expression::Var(Spanned::new(name, span.clone())), span),
+            } => Spanned::new(Expression::Var(Spanned::new(name, span)), span),
 
-            Some(Spanned {
+            Spanned {
                 value: Token::Bang,
                 span,
-            }) => Spanned::unary(
-                Spanned {
-                    value: UnaryOperator::Not,
-                    span,
-                },
+            } => Spanned::unary(
+                Spanned::new(UnaryOperator::Not, span),
                 self.parse_expression(Precedence::Unary)?,
             ),
 
-            Some(Spanned {
+            Spanned {
                 value: Token::Minus,
                 span,
-            }) => Spanned::unary(
-                Spanned {
-                    value: UnaryOperator::Negation,
-                    span,
-                },
+            } => Spanned::unary(
+                Spanned::new(UnaryOperator::Negation, span),
                 self.parse_expression(Precedence::Unary)?,
             ),
 
-            Some(_) => todo!(),
-            None => todo!(),
+            Spanned {
+                value: Token::Bool(value),
+                span,
+            } => Spanned::new(Expression::Bool(Spanned::new(value, span)), span),
+
+            token => return Err(ParseError::Expect(vec![], Some(token))),
         };
+
+        while precedence
+            < self
+                .peek()
+                .map_or(Precedence::Lowest, |token| Precedence::of(&token.value))
+        {
+            let token = self.expect()?;
+            let precedence = Precedence::of(&token.value);
+
+            let operator = match token {
+                Spanned {
+                    value: Token::Plus,
+                    span,
+                } => Spanned::new(BinaryOperator::Add, span),
+                Spanned {
+                    value: Token::Minus,
+                    span,
+                } => Spanned::new(BinaryOperator::Sub, span),
+                Spanned {
+                    value: Token::Asterisk,
+                    span,
+                } => Spanned::new(BinaryOperator::Mul, span),
+                Spanned {
+                    value: Token::Slash,
+                    span,
+                } => Spanned::new(BinaryOperator::Div, span),
+                Spanned {
+                    value: Token::Less,
+                    span,
+                } => Spanned::new(BinaryOperator::Less, span),
+                Spanned {
+                    value: Token::Greater,
+                    span,
+                } => Spanned::new(BinaryOperator::Greater, span),
+                Spanned {
+                    value: Token::LessEqual,
+                    span,
+                } => Spanned::new(BinaryOperator::LessEqual, span),
+                Spanned {
+                    value: Token::GreaterEqual,
+                    span,
+                } => Spanned::new(BinaryOperator::GreaterEqual, span),
+                Spanned {
+                    value: Token::Equal,
+                    span,
+                } => Spanned::new(BinaryOperator::Equal, span),
+                Spanned {
+                    value: Token::NotEqual,
+                    span,
+                } => Spanned::new(BinaryOperator::NotEqual, span),
+                Spanned {
+                    value: Token::Assign,
+                    span: _,
+                } => todo!(),
+                _ => todo!(),
+            };
+
+            let rhs = self.parse_expression(precedence)?;
+
+            lhs = Spanned::binary(operator, lhs, rhs)
+        }
 
         Ok(lhs)
     }
 
     fn parse_let_statement(&mut self) -> Result<Statement, ParseError> {
-        match self.token.take() {
-            Some(Spanned {
-                value: Token::Ident(name),
-                span,
-            }) => Ok(Statement::Let(
-                Spanned::new(name, span),
-                self.parse_expression(Precedence::Lowest)?,
-            )),
-            other => Err(ParseError::Expect(
-                vec![Token::Ident("".to_string())],
-                other,
-            )),
-        }
+        todo!()
     }
 
     fn parse_expression_statement(&mut self) -> Result<Statement, ParseError> {
@@ -165,25 +212,29 @@ impl Parser {
         self.token.as_ref()
     }
 
+    fn expect(&mut self) -> Result<Spanned<Token>, ParseError> {
+        let token = self.token.take().ok_or(ParseError::ExpectSome(None))?;
+        self.advance();
+        Ok(token)
+    }
+
     fn advance(&mut self) {
         self.token = self.cursor.next();
     }
 }
 
-impl From<&Spanned<Token>> for Precedence {
-    fn from(token: &Spanned<Token>) -> Self {
-        match token.value {
-            Token::Plus => Self::Sum,
-            Token::Minus => Self::Sum,
+impl Precedence {
+    fn of(token: &Token) -> Self {
+        match token {
+            Token::Plus | Token::Minus => Self::Sum,
             Token::Assign => Self::Assign,
-            Token::Equal => Self::Comparison,
-            Token::NotEqual => Self::Comparison,
-            Token::Less => Self::Comparison,
-            Token::Greater => Self::Comparison,
-            Token::LessEqual => Self::Comparison,
-            Token::GreaterEqual => Self::Comparison,
-            Token::Asterix => Self::Product,
-            Token::Slash => Self::Product,
+            Token::Equal
+            | Token::NotEqual
+            | Token::Less
+            | Token::Greater
+            | Token::LessEqual
+            | Token::GreaterEqual => Self::Comparison,
+            Token::Asterisk | Token::Slash => Self::Product,
             Token::LeftParan => Self::Call,
             _ => Self::Lowest,
         }
