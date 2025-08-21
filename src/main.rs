@@ -5,11 +5,12 @@ mod lexer;
 mod parser;
 
 fn main() {
-    let tokens = lexer::tokenize("!x").unwrap();
+    let source = "x";
+    let tokens = lexer::tokenize(source).unwrap();
 
     println!("{:#?}", tokens);
 
-    let mut parser = Parser::new(tokens);
+    let mut parser = Parser::new(tokens, source);
     let program = parser.parse();
 
     println!("{:#?}", program);

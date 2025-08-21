@@ -92,6 +92,12 @@ pub struct Span {
     pub end: usize,
 }
 
+impl<T> Spanned<T> {
+    pub fn new(value: T, span: Span) -> Self {
+        Self { value, span }
+    }
+}
+
 impl Spanned<Expression> {
     pub fn unary(operator: Spanned<UnaryOperator>, expression: Spanned<Expression>) -> Self {
         let start = operator.span.start;
@@ -158,9 +164,21 @@ impl TryFrom<&Spanned<Token>> for BinaryOperator {
     }
 }
 
-impl<T> Spanned<T> {
-    pub fn new(value: T, span: Span) -> Self {
-        Self { value, span }
+impl Span {
+    pub fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
+    }
+
+    pub fn from_char(pos: usize, ch: char) -> Self {
+        Self::new(pos, pos + ch.len_utf8())
+    }
+
+    pub fn from_chars(pos: usize, ch_pos: usize, ch: char) -> Self {
+        Self::new(pos, ch_pos + ch.len_utf8())
+    }
+
+    pub fn from_str(pos: usize, str: &str) -> Self {
+        Self::new(pos, pos + str.len())
     }
 }
 
@@ -168,17 +186,10 @@ impl<T: fmt::Debug> fmt::Debug for Spanned<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let type_name = std::any::type_name::<T>();
         let name = type_name.rsplit("::").next().unwrap_or(type_name);
-        // let full_name = format!("Spanned<{}>", name);
 
         f.debug_struct(name)
             .field("value", &self.value)
             .field("span", &self.span)
             .finish()
-    }
-}
-
-impl Span {
-    pub fn new(start: usize, end: usize) -> Self {
-        Self { start, end }
     }
 }

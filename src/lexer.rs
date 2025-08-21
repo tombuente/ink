@@ -35,15 +35,10 @@ pub enum Token {
     Return,
     If,
     Fn,
-    Bool(bool),
-    Ident(String),
+    True,
+    False,
+    Literal,
 }
-
-// #[derive(Debug, PartialEq, Clone)]
-// pub struct SpannedToken {
-//     pub token: Token,
-//     pub span: Span,
-// }
 
 #[derive(Debug, Error, PartialEq)]
 pub enum Error {
@@ -60,9 +55,9 @@ pub struct SpannedError {
 
 type Cursor<'a> = Peekable<CharIndices<'a>>;
 
-pub fn tokenize(input: &str) -> Result<Vec<Spanned<Token>>, SpannedError> {
+pub fn tokenize(source: &str) -> Result<Vec<Spanned<Token>>, SpannedError> {
     let mut tokens = Vec::new();
-    let mut cursor = input.char_indices().peekable();
+    let mut cursor = source.char_indices().peekable();
 
     while let Some((pos, ch)) = cursor.next() {
         match ch {
@@ -156,32 +151,9 @@ fn word(cursor: &mut Cursor<'_>, pos: usize, ch: char) -> Spanned<Token> {
         "return" => Spanned::new(Token::Return, span),
         "if" => Spanned::new(Token::If, span),
         "fn" => Spanned::new(Token::Fn, span),
-        "true" => Spanned::new(Token::Bool(true), span),
-        "false" => Spanned::new(Token::Bool(false), span),
-        _ => Spanned::new(Token::Ident(word), span),
-    }
-}
-
-impl Span {
-    fn from_char(pos: usize, ch: char) -> Self {
-        Self {
-            start: pos,
-            end: pos + ch.len_utf8(),
-        }
-    }
-
-    fn from_chars(pos: usize, ch_pos: usize, ch: char) -> Self {
-        Self {
-            start: pos,
-            end: ch_pos + ch.len_utf8(),
-        }
-    }
-
-    fn from_str(pos: usize, str: &str) -> Self {
-        Self {
-            start: pos,
-            end: pos + str.len(),
-        }
+        "true" => Spanned::new(Token::True, span),
+        "false" => Spanned::new(Token::False, span),
+        _ => Spanned::new(Token::Literal, span),
     }
 }
 
@@ -248,9 +220,9 @@ mod tests {
             Token::Return,
             Token::If,
             Token::Fn,
-            Token::Bool(true),
-            Token::Bool(false),
-            Token::Ident("word".to_string()),
+            Token::True,
+            Token::False,
+            Token::Literal,
         ];
 
         assert_eq!(tokens, expected);

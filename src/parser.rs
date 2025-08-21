@@ -3,12 +3,13 @@ use std::vec;
 use thiserror::Error;
 
 use crate::{
-    ast::{BinaryOperator, Expression, Program, Spanned, Statement, UnaryOperator},
+    ast::{BinaryOperator, Expression, Program, Span, Spanned, Statement, UnaryOperator},
     lexer::Token,
 };
 
 #[derive(Debug, Default)]
-pub struct Parser {
+pub struct Parser<'a> {
+    source: &'a str,
     cursor: vec::IntoIter<Spanned<Token>>,
     token: Option<Spanned<Token>>,
     errors: Vec<ParseError>,
@@ -29,15 +30,20 @@ enum Precedence {
 pub enum ParseError {
     #[error("expected one of {0:?}, found {1:?}")]
     Expect(Vec<Token>, Option<Spanned<Token>>),
-
-    #[error("expected token, found {0:?}")]
-    ExpectSome(Option<Spanned<Token>>),
 }
 
-#[allow(dead_code)]
-impl Parser {
-    pub fn new(tokens: Vec<Spanned<Token>>) -> Self {
+const EXPR_START: &[Token] = &[
+    Token::Minus,
+    Token::Bang,
+    Token::True,
+    Token::False,
+    Token::Literal,
+];
+
+impl<'a> Parser<'a> {
+    pub fn new(tokens: Vec<Spanned<Token>>, source: &'a str) -> Self {
         Self {
+            source,
             cursor: tokens.into_iter(),
             ..Default::default()
         }
@@ -61,17 +67,16 @@ impl Parser {
     }
 
     fn parse_statement(&mut self) -> Result<Statement, ParseError> {
-        match self.token.take() {
-            Some(Spanned {
+        let token = self.expect(EXPR_START)?;
+
+        match token {
+            Spanned {
                 value: Token::Let,
                 span: _,
-            }) => {
-                self.advance();
-                self.parse_let_statement()
-            }
+            } => self.parse_let_statement(),
 
             token => {
-                self.token = token;
+                self.token = Some(token);
 
                 Ok(Statement::Expression(
                     self.parse_expression(Precedence::Lowest)?,
@@ -84,13 +89,15 @@ impl Parser {
         &mut self,
         precedence: Precedence,
     ) -> Result<Spanned<Expression>, ParseError> {
-        let token = self.expect()?;
-
+        let token = self.expect(&[])?;
         let mut lhs = match token {
             Spanned {
-                value: Token::Ident(name),
+                value: Token::Minus,
                 span,
-            } => Spanned::new(Expression::Var(Spanned::new(name, span)), span),
+            } => Spanned::unary(
+                Spanned::new(UnaryOperator::Negation, span),
+                self.parse_expression(Precedence::Unary)?,
+            ),
 
             Spanned {
                 value: Token::Bang,
@@ -101,19 +108,26 @@ impl Parser {
             ),
 
             Spanned {
-                value: Token::Minus,
+                value: Token::True,
                 span,
-            } => Spanned::unary(
-                Spanned::new(UnaryOperator::Negation, span),
-                self.parse_expression(Precedence::Unary)?,
-            ),
+            } => Spanned::new(Expression::Bool(Spanned::new(true, span)), span),
 
             Spanned {
-                value: Token::Bool(value),
+                value: Token::False,
                 span,
-            } => Spanned::new(Expression::Bool(Spanned::new(value, span)), span),
+            } => Spanned::new(Expression::Bool(Spanned::new(false, span)), span),
 
-            token => return Err(ParseError::Expect(vec![], Some(token))),
+            Spanned {
+                value: Token::Literal,
+                span,
+            } => Spanned::new(
+                Expression::Var(Spanned::new(self.literal(span).into(), span)),
+                span,
+            ),
+
+            _ => {
+                return Err(ParseError::Expect(EXPR_START.into(), Some(token)));
+            }
         };
 
         while precedence
@@ -121,7 +135,7 @@ impl Parser {
                 .peek()
                 .map_or(Precedence::Lowest, |token| Precedence::of(&token.value))
         {
-            let token = self.expect()?;
+            let token = self.expect(&[])?;
             let precedence = Precedence::of(&token.value);
 
             let operator = match token {
@@ -169,7 +183,24 @@ impl Parser {
                     value: Token::Assign,
                     span: _,
                 } => todo!(),
-                _ => todo!(),
+                _ => {
+                    return Err(ParseError::Expect(
+                        vec![
+                            Token::Plus,
+                            Token::Minus,
+                            Token::Asterisk,
+                            Token::Slash,
+                            Token::Less,
+                            Token::Greater,
+                            Token::LessEqual,
+                            Token::GreaterEqual,
+                            Token::Equal,
+                            Token::NotEqual,
+                            Token::Assign,
+                        ],
+                        Some(token),
+                    ));
+                }
             };
 
             let rhs = self.parse_expression(precedence)?;
@@ -212,14 +243,25 @@ impl Parser {
         self.token.as_ref()
     }
 
-    fn expect(&mut self) -> Result<Spanned<Token>, ParseError> {
-        let token = self.token.take().ok_or(ParseError::ExpectSome(None))?;
-        self.advance();
+    fn expect(&mut self, take: &[Token]) -> Result<Spanned<Token>, ParseError> {
+        let token = self
+            .token
+            .take()
+            .ok_or(ParseError::Expect(take.to_vec(), None))?;
+
+        if !take.contains(&token.value) {
+            self.advance();
+        }
+
         Ok(token)
     }
 
     fn advance(&mut self) {
         self.token = self.cursor.next();
+    }
+
+    fn literal(&self, span: Span) -> &str {
+        &self.source[span.start..span.end]
     }
 }
 
