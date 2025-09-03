@@ -5,7 +5,7 @@ mod lexer;
 mod parser;
 
 fn main() {
-    let source = "x";
+    let source = "x + y * j";
     let tokens = lexer::tokenize(source).unwrap();
 
     println!("{:#?}", tokens);
